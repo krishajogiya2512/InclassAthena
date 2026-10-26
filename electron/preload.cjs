@@ -3,8 +3,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 /**
  * Athena Secure Preload Script
  * 
- * Exposes a tightly scoped, secure API bridge between the Electron main process
- * and the React renderer.
+ * Exposes tightly scoped, secure API bridges between the Electron main process
+ * and the React renderer:
+ * 1. window.athenaAPI - System & Focus Mode controls
+ * 2. window.athenaPrivacy - Central Privacy & Permission Activity Registry
  * 
  * Best Practices:
  * - contextIsolation: true
@@ -12,7 +14,45 @@ const { contextBridge, ipcRenderer } = require("electron");
  * - No unrestricted Node.js or child_process exposed
  * - Explicit typed methods only
  */
+
+const privacyBridge = {
+  // Central Activity Registry
+  setActivity: (type, isActive) => ipcRenderer.invoke("privacy:set-activity", type, isActive),
+  getActivities: () => ipcRenderer.invoke("privacy:get-activities"),
+  getPermissions: () => ipcRenderer.invoke("privacy:get-permissions"),
+  getPrivacyState: () => ipcRenderer.invoke("privacy:get-state"),
+
+  // Managed Session Control
+  setSessionState: (state) => ipcRenderer.invoke("session:set-state", state),
+
+  // Reactive Listeners
+  onActivityChanged: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on("privacy:activity-changed", subscription);
+    return () => ipcRenderer.removeListener("privacy:activity-changed", subscription);
+  },
+
+  onSessionStateChanged: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on("session:state-changed", subscription);
+    return () => ipcRenderer.removeListener("session:state-changed", subscription);
+  },
+
+  onBeforeQuit: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on("session:before-quit", subscription);
+    return () => ipcRenderer.removeListener("session:before-quit", subscription);
+  }
+};
+
 if (contextBridge && contextBridge.exposeInMainWorld) {
+  // Expose dedicated privacy API requested by specification
+  contextBridge.exposeInMainWorld("athenaPrivacy", privacyBridge);
+
+  // Expose main Athena API
   contextBridge.exposeInMainWorld("athenaAPI", {
     isElectron: true,
     platform: process.platform,
@@ -27,6 +67,9 @@ if (contextBridge && contextBridge.exposeInMainWorld) {
     getAppInfo: () => ipcRenderer.invoke("system:get-app-info"),
     toggleFullscreen: () => ipcRenderer.invoke("window:toggle-fullscreen"),
     getFullscreenState: () => ipcRenderer.invoke("window:get-fullscreen"),
+
+    // Privacy API reference on athenaAPI for convenience
+    privacy: privacyBridge,
 
     // Reactive Listeners
     onFocusStatusChanged: (callback) => {

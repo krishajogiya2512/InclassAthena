@@ -1,7 +1,8 @@
-const { BrowserWindow, app, ipcMain } = require("electron");
+const { BrowserWindow, app, ipcMain, session } = require("electron");
 const path = require("path");
 const net = require("net");
 const applicationManager = require("./services/applicationManager.cjs");
+const privacyManager = require("./services/privacyManager.cjs");
 
 let mainWindow = null;
 
@@ -157,10 +158,72 @@ function registerIpcHandlers() {
     }
     return false;
   });
+
+  // ==========================================
+  // Privacy & Permissions Central Activity API
+  // ==========================================
+
+  // Set resource activity (e.g., camera: true / false)
+  ipcMain.handle("privacy:set-activity", async (event, type, isActive) => {
+    validateSender(event);
+    return privacyManager.setActivity(type, isActive);
+  });
+
+  // Get active activities
+  ipcMain.handle("privacy:get-activities", async (event) => {
+    validateSender(event);
+    return privacyManager.getActivities();
+  });
+
+  // Get system permissions (e.g. macOS Camera permission status)
+  ipcMain.handle("privacy:get-permissions", async (event) => {
+    validateSender(event);
+    return privacyManager.getAllPermissions();
+  });
+
+  // Get combined privacy dashboard state
+  ipcMain.handle("privacy:get-state", async (event) => {
+    validateSender(event);
+    return privacyManager.getPrivacyState();
+  });
+
+  // Manage Examination Session Lifecycle
+  ipcMain.handle("session:set-state", async (event, state) => {
+    validateSender(event);
+    return privacyManager.setSessionState(state);
+  });
+}
+
+// Configure security & permissions for media access
+function configureSessionSecurity() {
+  if (!session || !session.defaultSession) return;
+
+  // Verify permission checks for camera & media
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    if (permission === "media" || permission === "camera" || permission === "microphone") {
+      // Validate that request originated from our own window
+      if (mainWindow && webContents === mainWindow.webContents) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  // Handle permission requests explicitly for trusted application origin
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === "media" || permission === "camera" || permission === "microphone") {
+      if (mainWindow && webContents === mainWindow.webContents) {
+        callback(true);
+        return;
+      }
+    }
+    callback(false);
+  });
 }
 
 if (app && app.whenReady) {
   app.whenReady().then(() => {
+    configureSessionSecurity();
     registerIpcHandlers();
     createWindow();
 
@@ -171,7 +234,17 @@ if (app && app.whenReady) {
     });
   });
 
+  // Ensure camera & media tracks are released on app quit
+  app.on("before-quit", () => {
+    console.log("[Athena Main] Application shutting down — stopping media activities.");
+    privacyManager.stopAllActivities("app_before_quit");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("session:before-quit");
+    }
+  });
+
   app.on("window-all-closed", () => {
+    privacyManager.stopAllActivities("window_all_closed");
     if (process.platform !== "darwin") {
       app.quit();
     }

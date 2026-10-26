@@ -5,7 +5,8 @@ import {
   EyeIcon,
   BookOpenIcon,
   LockIcon,
-  UserIcon
+  UserIcon,
+  CameraIcon
 } from "./Icons";
 
 export function Sidebar({ currentView, setCurrentView, focusStatus = "inactive", isCameraActive = false, isFullscreen = false }) {
@@ -17,6 +18,22 @@ export function Sidebar({ currentView, setCurrentView, focusStatus = "inactive",
       icon: ShieldIcon,
       badge: isCameraActive && isFullscreen ? "Ready" : "Pending",
       badgeColor: isCameraActive && isFullscreen ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+    },
+    {
+      id: "camera",
+      label: "Camera",
+      description: "Device preview & selection",
+      icon: CameraIcon,
+      badge: isCameraActive ? "Active" : "Off",
+      badgeColor: isCameraActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-slate-700/40 text-slate-400 border-slate-600/30"
+    },
+    {
+      id: "privacy",
+      label: "Permissions & Privacy",
+      description: "Live activity & access",
+      icon: LockIcon,
+      badge: isCameraActive ? "1 Active" : "Protected",
+      badgeColor: isCameraActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"
     },
     {
       id: "focus-mode",

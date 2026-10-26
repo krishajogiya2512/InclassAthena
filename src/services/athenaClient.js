@@ -12,6 +12,18 @@ const isElectronAvailable = typeof window !== "undefined" && Boolean(window.athe
 
 // In-memory mock state for web browser preview mode
 let mockStatus = "inactive";
+let mockPrivacyActivities = {
+  camera: false,
+  microphone: false,
+  screen: false
+};
+let mockPrivacyPermissions = {
+  camera: "granted",
+  microphone: "granted",
+  screen: "granted"
+};
+let mockSessionState = "idle";
+let privacyListeners = new Set();
 let mockRunningApps = [
   {
     name: "Athena",
@@ -209,6 +221,119 @@ export const athenaClient = {
   onFocusStatusChanged(callback) {
     if (isElectronAvailable && window.athenaAPI.onFocusStatusChanged) {
       return window.athenaAPI.onFocusStatusChanged(callback);
+    }
+    return () => {};
+  },
+
+  // ==========================================
+  // Privacy & Permissions Central Activity API
+  // ==========================================
+
+  async setPrivacyActivity(type, isActive) {
+    const val = Boolean(isActive);
+    if (typeof window !== "undefined" && window.athenaPrivacy?.setActivity) {
+      return await window.athenaPrivacy.setActivity(type, val);
+    }
+    if (isElectronAvailable && window.athenaAPI?.privacy?.setActivity) {
+      return await window.athenaAPI.privacy.setActivity(type, val);
+    }
+
+    // Web mock fallback
+    mockPrivacyActivities[type] = val;
+    const payload = {
+      type,
+      active: val,
+      activities: { ...mockPrivacyActivities },
+      timestamp: Date.now()
+    };
+    privacyListeners.forEach((fn) => {
+      try { fn(payload); } catch (e) { console.error(e); }
+    });
+    return { success: true, activities: { ...mockPrivacyActivities }, isMock: true };
+  },
+
+  async getPrivacyActivities() {
+    if (typeof window !== "undefined" && window.athenaPrivacy?.getActivities) {
+      return await window.athenaPrivacy.getActivities();
+    }
+    if (isElectronAvailable && window.athenaAPI?.privacy?.getActivities) {
+      return await window.athenaAPI.privacy.getActivities();
+    }
+    return { ...mockPrivacyActivities };
+  },
+
+  async getSystemPermissions() {
+    if (typeof window !== "undefined" && window.athenaPrivacy?.getPermissions) {
+      return await window.athenaPrivacy.getPermissions();
+    }
+    if (isElectronAvailable && window.athenaAPI?.privacy?.getPermissions) {
+      return await window.athenaAPI.privacy.getPermissions();
+    }
+    return { ...mockPrivacyPermissions };
+  },
+
+  async getPrivacyState() {
+    if (typeof window !== "undefined" && window.athenaPrivacy?.getPrivacyState) {
+      return await window.athenaPrivacy.getPrivacyState();
+    }
+    if (isElectronAvailable && window.athenaAPI?.privacy?.getPrivacyState) {
+      return await window.athenaAPI.privacy.getPrivacyState();
+    }
+    return {
+      activities: { ...mockPrivacyActivities },
+      permissions: { ...mockPrivacyPermissions },
+      sessionState: mockSessionState,
+      history: []
+    };
+  },
+
+  async setSessionState(state) {
+    if (typeof window !== "undefined" && window.athenaPrivacy?.setSessionState) {
+      return await window.athenaPrivacy.setSessionState(state);
+    }
+    mockSessionState = state;
+    if (state === "ended" || state === "error") {
+      mockPrivacyActivities.camera = false;
+      mockPrivacyActivities.microphone = false;
+      mockPrivacyActivities.screen = false;
+      const payload = {
+        type: "all",
+        active: false,
+        reason: `session_${state}`,
+        activities: { ...mockPrivacyActivities },
+        timestamp: Date.now()
+      };
+      privacyListeners.forEach((fn) => {
+        try { fn(payload); } catch (e) { console.error(e); }
+      });
+    }
+    return { success: true, sessionState: state, isMock: true };
+  },
+
+  onPrivacyActivityChanged(callback) {
+    if (typeof callback !== "function") return () => {};
+    if (typeof window !== "undefined" && window.athenaPrivacy?.onActivityChanged) {
+      return window.athenaPrivacy.onActivityChanged(callback);
+    }
+    if (isElectronAvailable && window.athenaAPI?.privacy?.onActivityChanged) {
+      return window.athenaAPI.privacy.onActivityChanged(callback);
+    }
+    privacyListeners.add(callback);
+    return () => privacyListeners.delete(callback);
+  },
+
+  onSessionEnded(callback) {
+    if (typeof callback !== "function") return () => {};
+    if (typeof window !== "undefined" && window.athenaPrivacy?.onSessionStateChanged) {
+      return window.athenaPrivacy.onSessionStateChanged(callback);
+    }
+    return () => {};
+  },
+
+  onBeforeQuit(callback) {
+    if (typeof callback !== "function") return () => {};
+    if (typeof window !== "undefined" && window.athenaPrivacy?.onBeforeQuit) {
+      return window.athenaPrivacy.onBeforeQuit(callback);
     }
     return () => {};
   }
